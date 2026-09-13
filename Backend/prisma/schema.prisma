@@ -1,0 +1,220 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  student
+}
+
+enum CourseStatus {
+  draft
+  published
+}
+
+enum EnrollmentStatus {
+  enrolled
+  dropped
+}
+
+enum MaterialType {
+  reading
+  pdf
+  slides
+  video
+  image
+  link
+}
+
+enum SubmissionStatus {
+  submitted
+  graded
+}
+
+enum AttendanceStatus {
+  present
+  late
+  excused
+  absent
+}
+
+model User {
+  id           String   @id @default(cuid())
+  role         Role
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatarColor  String   @default("#8A857B")
+
+  // staff only
+  title        String?
+
+  // student only
+  matric       String?  @unique
+  cohort       String?
+  phone        String?
+  status       String   @default("active") // "active" | "inactive"
+
+  coursesTaught Course[]      @relation("Instructor")
+  enrollments   Enrollment[]
+  quizAttempts  QuizAttempt[]
+  submissions   Submission[]
+  grades        Grade[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Course {
+  id          String       @id @default(cuid())
+  code        String
+  title       String
+  description String       @default("")
+  credits     Int          @default(3)
+  schedule    String       @default("")
+  room        String       @default("")
+  term        String
+  status      CourseStatus @default(draft)
+
+  instructorId String?
+  instructor   User?       @relation("Instructor", fields: [instructorId], references: [id], onDelete: SetNull)
+
+  enrollments Enrollment[]
+  materials   Material[]
+  quizzes     Quiz[]
+  assignments Assignment[]
+  attendance  AttendanceSession[]
+  grades      Grade[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status])
+}
+
+model Enrollment {
+  id         String           @id @default(cuid())
+  course     Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId   String
+  student    User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId  String
+  status     EnrollmentStatus @default(enrolled)
+  enrolledAt DateTime         @default(now())
+
+  @@unique([courseId, studentId])
+  @@index([studentId])
+}
+
+model Material {
+  id          String       @id @default(cuid())
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  week        Int          @default(1)
+  title       String
+  type        MaterialType @default(reading)
+  url         String       @default("")
+  description String       @default("")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([courseId])
+}
+
+model Quiz {
+  id          String        @id @default(cuid())
+  course      Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  title       String
+  description String        @default("")
+  dueDate     DateTime?
+  published   Boolean       @default(false)
+  questions   Json          @default("[]") // [{ id, text, options[], correctIndex, points }]
+  attempts    QuizAttempt[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([courseId])
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  quiz        Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId      String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId   String
+  answers     Json     @default("{}") // { [questionId]: optionIndex }
+  score       Int
+  maxScore    Int
+  submittedAt DateTime @default(now())
+
+  @@unique([quizId, studentId]) // one attempt per student (POC rule)
+}
+
+model Assignment {
+  id          String       @id @default(cuid())
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  title       String
+  description String       @default("")
+  dueDate     DateTime?
+  maxPoints   Int          @default(20)
+  published   Boolean      @default(true)
+  submissions Submission[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([courseId])
+}
+
+model Submission {
+  id           String           @id @default(cuid())
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId String
+  student      User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId    String
+  note         String           @default("")
+  fileName     String           @default("")
+  fileUrl      String           @default("")
+  submittedAt  DateTime?
+  status       SubmissionStatus @default(submitted)
+  grade        Int?
+  feedback     String           @default("")
+  gradedAt     DateTime?
+
+  @@unique([assignmentId, studentId])
+}
+
+model AttendanceSession {
+  id        String   @id @default(cuid())
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId  String
+  date      DateTime
+  topic     String   @default("")
+  records   Json     @default("{}") // { [studentId]: "present" | "late" | "excused" | "absent" }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Grade {
+  id         String   @id @default(cuid())
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId   String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId  String
+  item       String
+  category   String   @default("Coursework")
+  score      Float
+  maxScore   Float
+  weight     Float    @default(10)
+  note       String   @default("")
+  recordedAt DateTime @default(now())
+
+  @@index([courseId, studentId])
+}

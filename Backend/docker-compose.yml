@@ -1,0 +1,14 @@
+# Optional: containerised Postgres for anyone who does not have a local server.
+# Host port is 5433 (not 5432) so this can run beside an already-installed
+# PostgreSQL instance. If you use this, set in .env:
+#   DATABASE_URL="postgresql://qudrat:qudrat@localhost:5433/qudrat_lms?schema=public"
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qudrat
+      POSTGRES_PASSWORD: qudrat
+      POSTGRES_DB: qudrat_lms
+    ports: ["5433:5432"]
+    volumes: ["qudrat_pg:/var/lib/postgresql/data"]
+volumes: { qudrat_pg: {} }

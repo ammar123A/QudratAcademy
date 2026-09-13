@@ -1,0 +1,204 @@
+# Qudrat LMS API — manual test file
+# VS Code REST Client (humao.rest-client) or IntelliJ HTTP Client.
+# Run the two logins first: later requests reuse their tokens.
+
+@base = http://localhost:4000/api
+
+### health (no auth)
+GET {{base}}/health
+
+### login — admin
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@qudrat.edu", "password": "admin123" }
+
+### login — student
+# @name studentLogin
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "aisyah@student.qudrat.edu", "password": "student123" }
+
+### rehydrate session
+GET {{base}}/auth/me
+Authorization: Bearer {{login.response.body.token}}
+
+
+# ─────────────────────────────────────────────────────────
+# Admin
+# ─────────────────────────────────────────────────────────
+
+### list courses
+GET {{base}}/courses
+Authorization: Bearer {{login.response.body.token}}
+
+### instructor dropdown
+GET {{base}}/users?role=admin
+Authorization: Bearer {{login.response.body.token}}
+
+### students
+GET {{base}}/users?role=student&status=active
+Authorization: Bearer {{login.response.body.token}}
+
+### course overview tab
+GET {{base}}/courses/c-anat/summary
+Authorization: Bearer {{login.response.body.token}}
+
+### roster tab
+GET {{base}}/courses/c-anat/roster
+Authorization: Bearer {{login.response.body.token}}
+
+### gradebook — s-1001 should be overall 86, letter A
+GET {{base}}/courses/c-anat/gradebook
+Authorization: Bearer {{login.response.body.token}}
+
+### admin dashboard
+GET {{base}}/admin/dashboard
+Authorization: Bearer {{login.response.body.token}}
+
+### create a material
+POST {{base}}/courses/c-anat/materials
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{ "title": "Skeletal System notes", "type": "pdf", "week": 4, "url": "https://pdfobject.com/pdf/sample.pdf" }
+
+### submissions for an assignment (missing rows are synthesised)
+GET {{base}}/assignments/a-1/submissions
+Authorization: Bearer {{login.response.body.token}}
+
+### grade a submission
+PATCH {{base}}/submissions/sub-2
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{ "grade": 16, "feedback": "Good structure. Cite the conduction pathway.", "status": "graded" }
+
+### take attendance
+POST {{base}}/courses/c-anat/attendance
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "date": "2024-01-17T00:00:00.000Z",
+  "topic": "The cardiovascular system",
+  "records": { "s-1001": "present", "s-1002": "late", "s-1003": "absent" }
+}
+
+### add a manual mark
+POST {{base}}/courses/c-anat/grades
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{ "studentId": "s-1003", "item": "Lab Practical 1", "category": "Practical", "score": 40, "maxScore": 50, "weight": 15 }
+
+
+# ─────────────────────────────────────────────────────────
+# Student
+# ─────────────────────────────────────────────────────────
+
+### student dashboard
+GET {{base}}/me/dashboard
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### my courses
+GET {{base}}/me/courses
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### catalog (published only, with isEnrolled)
+GET {{base}}/catalog
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### my grades — c-anat should be overall 86
+GET {{base}}/me/grades
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### course materials
+GET {{base}}/courses/c-anat/materials
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### a quiz as a student — questions must NOT contain correctIndex
+GET {{base}}/quizzes/q-2
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### student takes a quiz — server grades it (expect score 6 / maxScore 6)
+POST {{base}}/quizzes/q-2/attempts
+Authorization: Bearer {{studentLogin.response.body.token}}
+Content-Type: application/json
+
+{ "answers": { "q2-a": 1, "q2-b": 3 } }
+
+### the same request again — expect 409 CONFLICT
+POST {{base}}/quizzes/q-2/attempts
+Authorization: Bearer {{studentLogin.response.body.token}}
+Content-Type: application/json
+
+{ "answers": { "q2-a": 1, "q2-b": 3 } }
+
+### my attempt for a quiz
+GET {{base}}/quizzes/q-1/attempts/me
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### submit an assignment
+POST {{base}}/assignments/a-2/submissions
+Authorization: Bearer {{studentLogin.response.body.token}}
+Content-Type: application/json
+
+{ "note": "My reflective journal.", "fileName": "aisyah-journal.pdf" }
+
+### my attendance for a course
+GET {{base}}/courses/c-anat/attendance/me
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### my marks for a course
+GET {{base}}/courses/c-anat/grades/me
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### enrol in a published course
+POST {{base}}/courses/c-fund/enroll
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+
+# ─────────────────────────────────────────────────────────
+# Flat collection lists (role-scoped — used by DataContext hydration)
+# ─────────────────────────────────────────────────────────
+
+### everything an admin needs on login
+GET {{base}}/enrollments
+Authorization: Bearer {{login.response.body.token}}
+
+### a student sees only their own rows here
+GET {{base}}/attendance
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+### and only their own marks
+GET {{base}}/grades
+Authorization: Bearer {{studentLogin.response.body.token}}
+
+
+# ─────────────────────────────────────────────────────────
+# Negative cases
+# ─────────────────────────────────────────────────────────
+
+### no token — expect 401
+GET {{base}}/courses
+
+### student hitting a staff route — expect 403
+POST {{base}}/courses
+Authorization: Bearer {{studentLogin.response.body.token}}
+Content-Type: application/json
+
+{ "code": "NUR 999", "title": "Nope", "term": "Semester 1, 2024" }
+
+### unknown id — expect 404
+GET {{base}}/courses/nope
+Authorization: Bearer {{login.response.body.token}}
+
+### invalid body — expect 400 with details[]
+POST {{base}}/courses
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{ "title": "" }
