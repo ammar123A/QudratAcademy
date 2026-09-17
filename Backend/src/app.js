@@ -23,7 +23,10 @@ export function createApp() {
   app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") ?? true }));
   app.use(express.json({ limit: "2mb" }));
 
-  if (process.env.NODE_ENV !== "test") {
+  if (process.env.NODE_ENV === "production") {
+    // Plain JSON logs — pino-pretty is a dev dependency and may not be installed.
+    app.use(pinoHttp());
+  } else if (process.env.NODE_ENV !== "test") {
     app.use(pinoHttp({ transport: { target: "pino-pretty", options: { colorize: true } } }));
   }
 
